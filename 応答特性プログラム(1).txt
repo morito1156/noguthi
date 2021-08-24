@@ -1,0 +1,378 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Feb 28 14:22:49 2019
+
+@author: Akira
+"""
+# -*- coding: utf-8 -*-
+import numpy as np
+import matplotlib.pyplot as plt
+import math as mth
+#np.set_printoptions(threshold=np.inf)
+
+
+Fc =       1
+ #MHz IIR,0=無効,0<有効
+Mstep =    10 #個のデータごとにサンプリング
+search =   0#現象開始サーチ 0=手動,1=自動
+starti =   10
+startout =1
+
+
+#input_voltage_org = np.genfromtxt(r'E:\Google Drive\卒業研究2018\班別\電流班\測定データ(原本）\12月\20181214\入力\銅板上\300M\100ns\12CE028.tdg' , delimiter = ',' , dtype = float)
+#output_voltage_org = np.genfromtxt(r'E:\Google Drive\卒業研究2018\班別\電流班\測定データ(原本）\12月\20181214\出力\銅板上\300M\アベレージ64\12CE021.tdg' , delimiter = ',' , dtype = float)
+input_voltage_org = np.genfromtxt(r'C:\Users\Akira\Desktop\2019\EP応答特性\16回\入力\入力(0ライン切).csv' , delimiter = ',' , dtype = float)
+output_voltage_org = np.genfromtxt(r'C:\Users\Akira\Desktop\2019\EP応答特性\16回\出力\出力(0ライン切).csv' , delimiter = ',' , dtype = float)
+
+
+temp_array = np.transpose(output_voltage_org)
+temp_array = np.transpose(output_voltage_org)
+time_output = list(temp_array[0])
+time_output=np.array(time_output) * 1.0e+6
+voltage_output = list(temp_array[1])
+temp_array = np.transpose(input_voltage_org)
+time_input = list(temp_array[0])
+time_input=np.array(time_input) * 1.0e+6
+voltage_input = list(temp_array[1])
+dlength = np.size(time_output)
+filterd_output_voltage = np.zeros(dlength)
+filterd_input_voltage = np.zeros(dlength)
+
+
+##IIRフィルタ
+#Fc =  1 #MHz
+dst =(time_input[10] - time_input[0])/10 * 1e-6
+if Fc == 0:#フィルター不使用
+    filterd_input_voltage=voltage_input
+    filterd_output_voltage=voltage_output
+else:#フィルター使用
+    #入力波形
+    Kf = (mth.sqrt(2)-1)/(Fc)**2
+    X = mth.tan(3.1415926 * dst / mth.sqrt(Kf * 0.000000000001))
+    a1 = (1 - X) / (1 + X)
+    b0 = X / (1 + X)
+    filterd_input_voltage[0]=0
+    for i in range(1, dlength - 1):
+        filterd_input_voltage[i] = b0 * (voltage_input[i] + voltage_input[i - 1]) + a1 * filterd_input_voltage[i -1]
+    for i in range(dlength-1, 0, -1):
+        filterd_input_voltage[i] = b0 * (voltage_input[i] + voltage_input[i - 1]) + a1 * filterd_input_voltage[i -1]
+    #出力波形
+    filterd_output_voltage[0]=0
+    for i in range(1, dlength - 1):
+        filterd_output_voltage[i] = b0 * (voltage_output[i] + voltage_output[i - 1]) + a1 * filterd_output_voltage[i -1]
+    for i in range(dlength-1, 0, -1):
+        filterd_output_voltage[i] = b0 * (voltage_output[i] + voltage_output[i - 1]) + a1 * filterd_output_voltage[i -1]
+
+
+#データのサンプリング
+filterd_output_voltage_2 = np.zeros(int(dlength/Mstep))
+filterd_input_voltage_2 = np.zeros(int(dlength/Mstep))
+time_output_voltage_2 = np.zeros(int(dlength/Mstep))
+time_input_voltage_2 = np.zeros(int(dlength/Mstep))
+j=0
+for i in range(0,dlength-Mstep+1,Mstep):
+    filterd_input_voltage_2[j]=filterd_input_voltage[i]
+    filterd_output_voltage_2[j]=filterd_output_voltage[i]
+    time_input_voltage_2[j]=time_input[i]
+    time_output_voltage_2[j]=time_output[i]
+    j=j+1
+
+
+dst =(time_input_voltage_2[10] - time_input_voltage_2[0])/10 * 1e-6
+dlength=int(dlength/Mstep)
+if search == 1:#現象開始点のサーチ
+    #入力(最大値を超えたらの方法)
+    dl038=int(dlength*0.038)
+    maxin=filterd_input_voltage_2[0]
+    for i in range(0, dl038):
+        if filterd_input_voltage_2[i]> maxin:
+            maxin=filterd_input_voltage_2[i]
+    for i in range(0,dlength-1):
+        if filterd_input_voltage_2[i]> maxin*10:
+            break
+    #出力(最大値を超えたらの方法)
+    dl038=int(dlength*0.038)
+    maxout=filterd_output_voltage_2[0]
+    for io in range(0, dl038):
+        if filterd_output_voltage_2[io]> maxout:
+            maxout=filterd_output_voltage_2[io]
+    for io in range(0,dlength-1):
+        if filterd_output_voltage_2[io]> maxout*1.1:
+            break
+#    starti=i #本来はこっち
+    starti=i+1
+    startout=io
+print("start in,out=",starti,startout)
+
+
+#型の移し替え
+dlength2=dlength-starti
+time_output_2 = np.zeros(dlength2)
+time_input_2 = np.zeros(dlength2)
+output_voltage_2 = np.zeros(dlength2)
+input_voltage_2 = np.zeros(dlength2)
+for i in range(0, dlength2):
+    output_voltage_2[i]=filterd_output_voltage_2[i]
+    input_voltage_2[i]=filterd_input_voltage_2[i+starti]
+    time_output_2[i]=i*dst*1e6
+    time_input_2[i]=time_output_2[i]
+##Theoryのコピー
+dlength = np.size(time_output_2)
+dlength = dlength-1
+dv_input=np.zeros(dlength)
+dv_output=np.zeros(dlength)
+resp=np.zeros(dlength)
+time_input2=np.zeros(dlength)
+time_output2=np.zeros(dlength)
+for i in range(0,dlength):
+#    dv_input[i]=input_voltage_2 [i+1]-input_voltage_2 [i]#old
+#    dv_output[i]=output_voltage_2 [i+1]-output_voltage_2 [i]#old
+    dv_input[i]=input_voltage_2 [i] #new
+    dv_output[i]=output_voltage_2 [i] #new
+    time_input2[i]=time_input_2[i]
+    time_output2[i]=time_output_2[i]
+
+
+#行列の生成
+respmat=np.zeros((dlength,dlength))
+for i in range(0, dlength):
+    respmat[i, 0] = dv_input[i]
+for j in range(1 , dlength):
+    for i in range(j , dlength ):
+        respmat[i, j] = respmat[i-j,0]     
+respmat_inv = np.linalg.inv(respmat)
+inputvoltage=np.zeros((dlength))
+inputvoltage=np.dot(respmat_inv,dv_output)
+#np.savetxt("resp.csv", respmat, fmt="%.10f",delimiter=",")
+#np.savetxt("resp-inv.csv", respmat_inv, fmt="%.10f",delimiter=",")
+plt.plot(time_input2,inputvoltage,label="impulse response")
+plt.legend() 
+plt.show()
+
+
+##IIRフィルタ デコンボ用(行列の生成完了後に挿入)
+#Fc = 2 #MHz
+#filterd_step_response = np.zeros(dlength)
+#dst =(time_input2[10] - time_input2[0])/10 * 1e-6
+#Kf = (mth.sqrt(2)-1)/(Fc)**2
+#X = mth.tan(3.1415926 * dst / mth.sqrt(Kf * 0.000000000001))
+#a1 = (1 - X) / (1 + X)
+#b0 = X / (1 + X)
+#filterd_step_response[0]=0
+#for i in range(1, dlength-1):
+#    filterd_step_response[i] = b0 * (inputvoltage[i] + inputvoltage[i - 1]) + a1 * filterd_step_response[i -1]
+#for i in range(dlength-1, 0, -1):
+#    filterd_step_response[i] = b0 * (inputvoltage[i] + inputvoltage[i - 1]) + a1 * filterd_step_response[i -1]
+#plt.plot(time_input2,filterd_step_response,'.')
+#plt.show()
+#inputvoltage = filterd_step_response
+##IIRフィルタ デコンボ用2重目
+#for i in range(1, dlength-1):
+#    filterd_step_response[i] = b0 * (inputvoltage[i] + inputvoltage[i - 1]) + a1 * filterd_step_response[i -1]
+#for i in range(dlength-1, 0, -1):
+#    filterd_step_response[i] = b0 * (inputvoltage[i] + inputvoltage[i - 1]) + a1 * filterd_step_response[i -1]
+#plt.plot(time_input2,filterd_step_response,'.')
+#plt.show()
+#inputvoltage = filterd_step_response
+
+
+#インパルスからステップ応答へ　ノミナル正規化（波頭長裕度）
+for i in range(0, dlength):
+    resp[i] = resp[i-1]+inputvoltage[i]
+for i in range(0,dlength):
+    if time_input_2[i]>3.6:
+       break
+    i36=i-1+startout
+for i in range(i36,dlength):
+        if time_input_2[i]>4.4:
+           break
+i44=i +startout
+iepoc = int(i44-i36)
+epocave = np.zeros(iepoc)
+print("start in,out=",i36,i44)
+for i in range(i36,i44):
+    ii=i-i36
+    epocave[ii]=resp[i]
+eave=(np.average(epocave))
+print("eave=",eave)
+respoc = np.array(resp)/eave#ノミナルで正規化(resp=正規化前)
+respocw=str(respoc)
+plt.plot(time_input2,respoc,label="Deconvoltuin wave")
+plt.legend() 
+plt.show()
+
+
+fileobj = open("応答特性.txt", "w")
+fileobj.write(respocw) 
+fileobj.close() 
+path_w = r'C:\Users\Akira\Downloads\応答特性1.txt'
+
+s = 'New file'
+
+with open(path_w, mode='w') as f:
+    f.write(respocw)
+
+with open(path_w) as f:
+    print(f.read())
+
+
+
+
+#応答時間算出
+for i in range(0, dlength):
+   respoc[i]= 1-respoc[i] 
+dlength = np.size(time_input2)
+print("dl,Mstep,startin,out=",dlength,Mstep,starti,startout)
+Integral=np.zeros((dlength))
+Integral[0]=0
+for i in range(startout,dlength):
+    Integral[i]=((respoc[i-1]+respoc[i]))*0.5*Mstep
+Tn = sum(Integral)
+print("Tn=",round(Tn, 1), "[nｓ]")
+
+
+#応答時間書き出し
+fileobj = open("ステップ応答.txt", "w")
+fileobj.write(respocw) 
+fileobj.close() 
+
+Tnresp=str(respoc)
+fileobj = open("応答時間.txt", "w") #txtを書き出しモードで開く
+fileobj.write(Tnresp) #write()メソッドでファイルに書き込み
+fileobj.close() 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##生波形
+#plt.plot(time_input,voltage_input,'.',label="Input wave1")
+#plt.legend()
+#plt.show()
+#plt.plot(time_output,voltage_output,'.',label="Output wave1")
+#plt.legend()
+#plt.show()
+
+##filterd wave表示
+#plt.plot(time_input,filterd_input_voltage,'.',label="filterd_Input wave2")
+#plt.legend()
+#plt.show()
+#plt.plot(time_output,filterd_output_voltage,'.',label="filterd_Output wave2")
+#plt.legend()
+#plt.show()
+
+##サンプリング後filterd wave表示
+#plt.plot(time_input_voltage_2,filterd_input_voltage_2,'.',label="Input wave3")
+#plt.plot(time_output_voltage_2,filterd_output_voltage_2,'.',label="Output wave")
+#plt.legend()
+#plt.show()
+
+##Theoryのコピー
+#plt.plot(time_input2,dv_input,'.',label="Input wave5")
+#plt.plot(time_output2,dv_output,'.',label='Measured wave')
+##plt.plot(time_input,voltage_input,'.',label="Input wave")
+##plt.plot(time_output,voltage_output,'.',label='Measured wave')
+#plt.legend() 
+#plt.show()
+
+
+
+#print("size=",respoc.size)
+
+
+
+#FFT
+#print ("FFT")
+#f=np.fft.fft(inputvoltage)
+#f_abs = np.abs(f)
+#N1 = int(10000/Mstep) # サンプル数
+#dt1 = 10/N1 # サンプリング周期
+#fq = np.linspace(0, 1.0/dt1, N1) # 周波数軸　linspace(開始,終了,分割数)
+#plt.xlabel('freqency(MHz)', fontsize=14)
+#plt.ylabel('signal amplitude', fontsize=14)
+#plt.plot(fq[:int(N1/2)+1], f_abs[:int(N1/2)+1]) # ナイキスト定数まで表示
+#plt.show()
+
+
+
+
+##現象開始点のサーチ(入力)標準偏差を考慮した方法
+#    dst =(time_input_voltage_2[10] - time_input_voltage_2[0])/10 * 1e-6
+#    dl004=int(dlength*0.04)
+#    temparray = np.zeros(dl004)
+#    for i in range(1, dl004):
+#        temparray[i]=filterd_input_voltage_2[i]
+#    ave=(np.average(temparray))
+#    std=(np.std(temparray))
+#    for i in range(0,dlength-1):
+#        if filterd_input_voltage_2[i]> ave+3*std:
+#            break
+
+##現象開始点のサーチ(出力)最大値を超えたらの方法
+#dl004=int(dlength*0.036)
+#temparrayout = np.zeros(dl004)
+#for io in range(1, dl004):
+#    temparrayout[io]=filterd_output_voltage_2[io]
+#maxout=0
+#for i in range(1, dl004):
+#    if filterd_output_voltage_2[i]> maxout:
+#        maxout=filterd_output_voltage_2[i]
+#maxout=maxout*1.1
+#for io in range(0,maxi):
+#    if filterd_output_voltage_2[io]> maxout:
+#        break
+
+##現象開始点のサーチ(出力)標準偏差を考慮した方法
+#dl004=int(dlength*0.04)
+#temparrayout = np.zeros(dl004)
+#for io in range(1, dl004):
+#    temparrayout[io]=filterd_output_voltage_2[io]
+#
+#ave=(np.average(temparrayout))
+#std=(np.std(temparrayout))
+#print("startout=",ave)
+#print("startout=",std)
+#for io in range(0,maxi):
+#    if filterd_output_voltage_2[io]> ave+3*std:
+#        break
+
+
+####Theoryのコピー 前の
+#time_input =np.zeros(dlength2)
+#time_output =np.zeros(dlength2)
+#voltage_intput =np.zeros(dlength2)
+#voltage_output =np.zeros(dlength2)
+#voltage_output =output_voltage_2 
+#voltage_input =input_voltage_2 
+#time_input = time_input_2
+#time_output = time_output_2
+#dlength = np.size(time_output)
+#dv_input=np.zeros(dlength-1)
+#dv_output=np.zeros(dlength-1)
+#resp=np.zeros(dlength-1)
+#time_input2=np.zeros(dlength-1)
+#time_output2=np.zeros(dlength-1)
+#for i in range(0,dlength-1):
+##    dv_input[i]=voltage_input[i+1]-voltage_input[i]#old
+##    dv_output[i]=voltage_output[i+1]-voltage_output[i]#old
+#    dv_input[i]=voltage_input[i] #new
+#    dv_output[i]=voltage_output[i] #new
+#    time_input2[i]=time_input[i]
+#    time_output2[i]=time_output[i]
+#dlength = dlength-1
+##plt.plot(time_input2,dv_input,'.',label="Input wave5")
+##plt.plot(time_output2,dv_output,'.',label='Measured wave')
+###plt.plot(time_input,voltage_input,'.',label="Input wave")
+###plt.plot(time_output,voltage_output,'.',label='Measured wave')
+##plt.legend() 
+##plt.show()
